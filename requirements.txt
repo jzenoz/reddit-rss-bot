@@ -1,0 +1,4 @@
+loguru
+praw
+schedule
+feedparser
