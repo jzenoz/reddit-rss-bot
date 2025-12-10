@@ -6,7 +6,6 @@ services:
     restart: unless-stopped
     volumes:
       - ./bot_script:/app
-      - ./requirements.txt:/app/requirements.txt
     working_dir: /app
     env_file:
       - .env
