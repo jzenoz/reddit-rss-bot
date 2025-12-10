@@ -1,6 +1,7 @@
 services:
   reddit-bot:
     image: python:3.9-slim
+    pull_policy: always
     container_name: reddit-rss-bot
     restart: unless-stopped
     volumes:
