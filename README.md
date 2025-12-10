@@ -7,7 +7,10 @@ The bot posts as a specific Reddit User and automatically **distinguishes** the 
 ## Features
 
   * **RSS Monitoring:** Polls the feed every `POLLING_INTERVAL_MINUTES` minutes.
-  * **Stateless Duplicate Detection:** Instead of a local database, it uses Reddit's search API (`site:example.com`) to check if a link has already been posted to the subreddit.
+  * **Hybrid Duplicate Detection:** Uses a robust 3-layer system to prevent reposts:
+    1.  **Memory Cache:** Remembers posts made during the current session to save API calls.
+    2.  **Recent Feed (`.new`):** Checks the last 100 posts for immediate consistency (prevents reposting during search indexing lag).
+    3.  **Deep Search (`.search`):** Queries full subreddit history to prevent reposting old items after long bot downtimes.
   * **Mod Actions:** Automatically distinguishes posts (requires Mod permissions).
   * **Safety/Debug Mode:** Includes a `REDDIT_DEBUG` flag that switches the bot to Read-Only mode and prints authentication scopes without posting.
   * **Secure:** Uses Reddit **Refresh Tokens** to avoid storing account passwords.

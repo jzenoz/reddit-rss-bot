@@ -15,6 +15,9 @@ TARGET_SUBREDDIT = os.getenv("TARGET_SUBREDDIT")
 POLLING_INTERVAL_MINUTES = int(os.getenv("POLLING_INTERVAL_MINUTES", 15))
 DEBUG = os.getenv("REDDIT_DEBUG", "False").lower() == "true"
 
+# Global In-Memory Cache (resets on restart)
+POSTED_CACHE = set()
+
 # Default loguru logger level is DEBUG
 if not DEBUG:
     logger.remove()
@@ -35,14 +38,41 @@ def get_reddit_instance():
 
 
 def is_already_posted(reddit, url_to_check):
-    try:
-        search_results = list(reddit.subreddit(TARGET_SUBREDDIT).search(query=f"site:{MONITORED_DOMAIN}", sort="new"))
+    clean_url = url_to_check.rstrip("/")
 
-        logger.debug(f"Retrieved {len(search_results)} entries")
+    # --- LAYER 1: Memory Cache (Fastest) ---
+    if clean_url in POSTED_CACHE:
+        logger.debug(f" [Cache] Found in local memory: {clean_url}")
+        return True
+
+    try:
+        subreddit = reddit.subreddit(TARGET_SUBREDDIT)
+
+        # --- LAYER 2: Recent History (Protects against Search Lag) ---
+        # Checking .new() is "Strongly Consistent" and sees posts immediately.
+        logger.debug(" [New] Checking .new(limit=100) feed...")
+        for submission in subreddit.new(limit=100):
+            if submission.url.rstrip("/") == clean_url:
+                logger.debug(f" [New] Found in recent history: {submission.title}")
+                POSTED_CACHE.add(clean_url)
+                return True
+
+        # --- LAYER 3: Deep Search (Protects against Long Downtime) ---
+        # Search is "Eventually Consistent" (laggy) but searches back years.
+        # We only run this if Layer 2 failed, avoiding the lag loop issue.
+        logger.debug(" [Search] Checking .search() API...")
+        search_query = f"site:{MONITORED_DOMAIN}"
+        search_results = list(subreddit.search(query=search_query, sort="new"))
+
+        logger.debug(
+            f" [Search] Retrieved {len(search_results)} entries from search API"
+        )
 
         for submission in search_results:
             logger.debug(f"Checking submission:\n{submission.url} {submission.title}")
-            if submission.url.rstrip("/") == url_to_check.rstrip("/"):
+            if submission.url.rstrip("/") == clean_url:
+                logger.debug(f" [Search] Found in search history: {submission.title}")
+                POSTED_CACHE.add(clean_url)
                 return True
     except Exception as e:
         logger.error(f"Error checking subreddit history: {e}")
@@ -91,6 +121,9 @@ def run_bot():
             subreddit = reddit.subreddit(TARGET_SUBREDDIT)
             submission = subreddit.submit(title=latest_entry.title, url=latest_link)
             logger.info(f"Posted: {submission.shortlink}")
+
+            # Update Cache Immediately
+            POSTED_CACHE.add(latest_link.rstrip("/"))
 
             # Mod Distinguish (Green [M]) - No Sticky
             try:
